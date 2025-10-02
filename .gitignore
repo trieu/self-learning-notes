@@ -1,0 +1,73 @@
+# ==> .gitignore for a Flutter project <==
+
+# General
+*.log
+*.DS_Store
+Thumbs.db
+
+# IDE / Editor specific
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.project
+.metadata
+.classpath
+
+# Flutter
+build/
+.dart_tool/
+.packages
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Don't ignore pubspec.lock, it's important for reproducible builds.
+# This line is commented out but is a reminder.
+# !pubspec.lock
+
+# Android
+android/app/src/main/assets/flutter_assets/
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+android/key.properties
+android/app/google-services.json
+
+# iOS
+ios/build/
+ios/Pods/
+ios/Podfile.lock
+ios/.symlinks/
+ios/Flutter/App.framework
+ios/Flutter/engine.xcframework
+ios/Flutter/flutter_assets/
+ios/Runner/GoogleService-Info.plist
+ios/Runner.xcworkspace/xcshareddata/
+ios/Runner.xcworkspace/xcuserdata/
+
+# macOS
+macos/build/
+macos/Flutter/ephemeral/
+macos/.symlinks/
+
+# Linux
+linux/build/
+linux/flutter/ephemeral/
+.plugin_symlinks/
+
+# Web
+web/build/
+web/.dart_tool/
+
+# Windows
+windows/build/
+windows/flutter/ephemeral/
+.plugin_symlinks/
+
+# Secrets and Environment Variables (IMPORTANT!)
+# Never commit files with secrets. Use an environment variable approach.
+# Add your secret files here, for example:
+.env
+secrets.json
