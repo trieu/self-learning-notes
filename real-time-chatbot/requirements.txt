@@ -1,0 +1,14 @@
+# --- Core FastAPI + ASGI ---
+fastapi==0.119.1
+uvicorn[standard]==0.38.0
+
+# --- Google Gemini SDK ---
+google-genai==1.46.0
+
+# --- Data validation ---
+pydantic==2.12.3
+
+# --- Optional: enable async safety and extra tools ---
+python-dotenv==1.1.1
+httpx
+

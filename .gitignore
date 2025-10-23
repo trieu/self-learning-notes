@@ -71,3 +71,9 @@ windows/flutter/ephemeral/
 # Add your secret files here, for example:
 .env
 secrets.json
+
+# python 
+*/__pycache__
+*/__pycache__/*
+*/.venv
+*/.venv/*

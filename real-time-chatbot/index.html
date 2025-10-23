@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Gemini Streaming Chat (jQuery)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- 1. Add jQuery -->
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    
+    <!-- 2. Add CSS for animations and chat bubbles -->
+    <style>
+      :root {
+        --user-bg: #007bff;
+        --model-bg: #f0f0f0;
+        --text-light: #fff;
+        --text-dark: #333;
+      }
+      body {
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        background-color: #fafafa;
+      }
+      header {
+        padding: 1rem;
+        border-bottom: 1px solid #ddd;
+        background: #fff;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        flex-wrap: wrap;
+      }
+      header h1 {
+        font-size: 1.2rem;
+        margin: 0;
+      }
+      #status {
+        font-size: 0.8rem;
+        color: #666;
+        margin-left: auto;
+      }
+      select, button {
+        padding: 0.4rem 0.6rem;
+        font-size: 0.9rem;
+        border-radius: 6px;
+        border: 1px solid #ccc;
+      }
+      button {
+        cursor: pointer;
+      }
+
+      /* Chat log styling */
+      #chat-log {
+        flex-grow: 1;
+        overflow-y: auto;
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+      .message {
+        padding: 0.75rem 1rem;
+        border-radius: 18px;
+        max-width: 80%;
+        width: fit-content;
+        word-wrap: break-word;
+        /* Animation */
+        opacity: 0;
+        transform: translateY(10px);
+        animation: fadeIn 0.3s ease-out forwards;
+      }
+      .message.user {
+        background-color: var(--user-bg);
+        color: var(--text-light);
+        align-self: flex-end;
+        border-bottom-right-radius: 4px;
+      }
+      .message.model {
+        background-color: var(--model-bg);
+        color: var(--text-dark);
+        align-self: flex-start;
+        border-bottom-left-radius: 4px;
+        white-space: pre-wrap; /* Preserve newlines from AI */
+      }
+      /* Typing indicator */
+      #typing-indicator {
+        display: none; /* Hidden by default */
+        align-self: flex-start;
+        color: #777;
+        font-style: italic;
+        padding: 0.75rem 1rem;
+      }
+
+      /* Input form styling */
+      #chat-form {
+        display: flex;
+        padding: 1rem;
+        border-top: 1px solid #ddd;
+        background: #fff;
+        gap: 0.5rem;
+      }
+      #chat-form textarea {
+        flex-grow: 1;
+        font-size: 1rem;
+        padding: 0.75rem;
+        border-radius: 8px;
+        border: 1px solid #ccc;
+        resize: none;
+        height: 40px; /* Start small, can grow */
+      }
+      #chat-form button {
+        font-size: 1rem;
+        padding: 0.75rem 1.25rem;
+        border: none;
+        border-radius: 8px;
+        background-color: var(--user-bg);
+        color: white;
+      }
+      #chat-form button:disabled {
+        background-color: #aaa;
+        cursor: not-allowed;
+      }
+
+      /* Keyframe animation */
+      @keyframes fadeIn {
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Gemini Chat</h1>
+      <label>
+        Model:
+        <select id="model">
+          <option value="gemini-2.5-flash-lite" selected>gemini-2.5-flash-lite</option>
+          <option value="gemini-2.5-flash" >gemini-2.5-flash</option>
+        </select>
+      </label>
+      <button id="connect">Connect</button>
+      <span id="status">disconnected</span>
+    </header>
+
+    <!-- Chat messages will appear here -->
+    <div id="chat-log">
+      <div class="message model" style="opacity: 1; transform: none;">Hi! Connect to get started.</div>
+    </div>
+    
+    <!-- Typing indicator -->
+    <span id="typing-indicator">typing...</span>
+
+    <!-- Input form at the bottom -->
+    <form id="chat-form">
+      <textarea id="input" placeholder="Type your message…" rows="1"></textarea>
+      <button id="send" type="submit" disabled>Send</button>
+    </form>
+
+    <script>
+      // 3. jQuery-based JavaScript
+      $(document).ready(function () {
+        let ws = null;
+        let history = []; // This will now store user AND model messages
+        let current_ai_response = ""; // Accumulator for streaming deltas
+        
+        const $status = $("#status");
+        const $btnConnect = $("#connect");
+        const $btnSend = $("#send");
+        const $txtInput = $("#input");
+        const $log = $("#chat-log");
+        const $modelSelect = $("#model");
+        const $typing = $("#typing-indicator");
+        const $chatForm = $("#chat-form");
+
+        function setStatus(s, connected = false) {
+          $status.text(s);
+          if (connected) {
+            $btnSend.prop("disabled", false);
+            $btnConnect.text("Disconnect");
+            $status.css("color", "green");
+            $modelSelect.prop("disabled", true);
+          } else {
+            $btnSend.prop("disabled", true);
+            $btnConnect.text("Connect");
+            $status.css("color", "#666");
+            $modelSelect.prop("disabled", false);
+          }
+        }
+        
+        function scrollToBottom() {
+            // Animate scroll for a smoother experience
+            $log.stop().animate({ scrollTop: $log[0].scrollHeight}, 500);
+        }
+
+        function appendMessage(role, content) {
+          const $msg = $(`<div class="message ${role}"></div>`).text(content);
+          $log.append($msg);
+          scrollToBottom();
+          return $msg; // Return the element for streaming
+        }
+
+        $btnConnect.on("click", () => {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.close();
+            return;
+          }
+          const model = encodeURIComponent($modelSelect.val());
+          // Use window.location.host to dynamically set the host
+          const wsHost = '127.0.0.1:8000';
+          // Use 'wss' if the page is loaded over 'https'
+          const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+          const wsUrl = `${wsProtocol}//${wsHost}/ws/chat?model=${model}`;
+          // const wsUrl = `${wsProtocol}//${wsHost}/ws/chat`;
+          
+          setStatus("connecting...");
+          ws = new WebSocket(wsUrl);
+
+          ws.onopen = () => {
+            setStatus("connected", true);
+            appendMessage("model", "Connection established. Ready to chat!");
+          };
+
+          ws.onmessage = (ev) => {
+            try {
+              const msg = JSON.parse(ev.data);
+              
+              if (msg.type === "delta") {
+                // First delta? Show typing and create message bubble
+                if (current_ai_response === "") {
+                    $typing.hide();
+                    // Create the bubble. We'll append text to it.
+                    appendMessage("model", ""); 
+                }
+                
+                current_ai_response += msg.text;
+                // Update the *last* model message bubble with new text
+                // Using .text() escapes HTML, which is safer
+                $log.find(".message.model").last().text(current_ai_response);
+                scrollToBottom();
+                
+              } else if (msg.type === "done") {
+                // *** BUG FIX: Save the complete AI response to history ***
+                if (current_ai_response) {
+                    // Save as the correct part format
+                    history.push({ role: "model", parts: [{ "text": current_ai_response }] });
+                    // Keep history modest
+                    if (history.length > 10) history = history.slice(-10);
+                }
+                current_ai_response = ""; // Reset for next message
+                $btnSend.prop("disabled", false); // Re-enable send
+                
+              } else if (msg.type === "error") {
+                appendMessage("model", `[ERROR] ${msg.message}`);
+                $typing.hide();
+                $btnSend.prop("disabled", false);
+              }
+              
+            } catch (e) {
+              console.error("Failed to parse message:", ev.data, e);
+              appendMessage("model", `[RAW] ${ev.data}`);
+            }
+          };
+
+          ws.onclose = () => {
+            setStatus("disconnected");
+            if (current_ai_response) { // Save any partial response on disconnect
+                 history.push({ role: "model", parts: [{ "text": current_ai_response }] });
+            }
+            current_ai_response = "";
+          };
+
+          ws.onerror = (e) => {
+            console.error("WebSocket Error:", e);
+            setStatus("error");
+            appendMessage("model", "[WebSocket Error! Check console and server logs.]");
+          };
+        });
+
+        $chatForm.on("submit", (e) => {
+          e.preventDefault(); // Stop form from reloading page
+          const content = $txtInput.val().trim();
+          if (!content || !ws || ws.readyState !== WebSocket.OPEN) return;
+
+          // 1. Show user message
+          appendMessage("user", content);
+
+          // 2. Add user message to history
+          history.push({ role: "user", parts: [{ "text": content }] });
+
+          // 3. Prep and send payload
+          const payload = {
+            content,
+            history: history.slice(0, -1), // Send history *before* this message
+            model: $modelSelect.val() // Send selected model
+          };
+          ws.send(JSON.stringify(payload));
+          
+          // 4. Clear input and show typing
+          $txtInput.val("");
+          $btnSend.prop("disabled", true); // Disable until 'done'
+          $typing.show();
+          scrollToBottom();
+        });
+        
+        // Bonus: Allow Enter to send, Shift+Enter for newline
+        $txtInput.on('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                $chatForm.submit();
+            }
+        });
+      });
+    </script>
+  </body>
+</html>
